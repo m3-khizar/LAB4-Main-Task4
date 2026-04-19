@@ -1,0 +1,86 @@
+/* Filename: Lab 4 Main Task 4.cpp
+Author: Musa Khizar
+Date: 19/04/2026
+*/
+
+#include "mbed.h"
+#include "arm_book_lib.h"
+
+// --- Hardware Mapping ---
+static BufferedSerial uartUsb(USBTX, USBRX, 115200);
+
+AnalogIn potentiometer(A0);   // Threshold Control
+AnalogIn tempSensor(A1);      // LM35 Temp Sensor
+AnalogIn gasSensor(A2);       // MQ-2 Analog (via breadboard resistors)
+
+DigitalOut buzzer(PE_10);     // Wired: Positive to PE_10, Negative to GND
+
+DigitalOut tempLed(LED1);     
+DigitalOut gasLed(LED2);      
+DigitalOut normalLed(LED3);   
+
+// --- Configuration ---
+#define TEMP_SCALE 330.0f     
+
+// Standard Logic for direct-pin wiring:
+#define ALARM_ON   1          // 1 sends power to the buzzer
+#define ALARM_OFF  0          // 0 cuts all power (guaranteed silence)
+
+void sendLog(const char* msg) {
+    uartUsb.write(msg, strlen(msg));
+}
+
+int main() {
+    // Initial State: System Normal
+    buzzer = ALARM_OFF; 
+    tempLed = 0;
+    gasLed = 0;
+    normalLed = 1;
+
+    sendLog(">> System Reset. Monitoring Temperature and Gas.\r\n");
+
+    while (true) {
+        // 1. Read Analog Values
+        float threshold = potentiometer.read() * 100.0f; 
+        float currentTemp = tempSensor.read() * TEMP_SCALE; 
+        float currentGas = gasSensor.read() * 100.0f; 
+
+        // 2. Task 4 Logic: Compare sensors to the dynamic threshold
+        bool tempWarning = (currentTemp > threshold); 
+        bool gasWarning = (currentGas > threshold);   
+
+        // 3. Action
+        if (tempWarning || gasWarning) {
+            buzzer = ALARM_ON; 
+            normalLed = 0;
+
+            if (tempWarning) {
+                sendLog("ALARM: High Temperature Detected!\r\n");
+                tempLed = 1;
+            } else {
+                tempLed = 0;
+            }
+
+            if (gasWarning) {
+                sendLog("ALARM: Gas Leak Detected!\r\n");
+                gasLed = 1;
+            } else {
+                gasLed = 0;
+            }
+        } else {
+            // Safe State
+            buzzer = ALARM_OFF; 
+            tempLed = 0;
+            gasLed = 0;
+            normalLed = 1;
+
+            char buffer[120];
+            sprintf(buffer, "Normal | Temp: %.1fC | Gas: %.1f%% | Threshold: %.1f\r\n", 
+                    currentTemp, currentGas, threshold); 
+            sendLog(buffer);
+        }
+
+        // 1 second delay between readings
+        thread_sleep_for(1000); 
+    }
+}
